@@ -1,0 +1,1 @@
+# bgg-affiliate-generator
