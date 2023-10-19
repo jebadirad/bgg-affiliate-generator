@@ -8,8 +8,8 @@ import { shopifyApi, LATEST_API_VERSION } from "@shopify/shopify-api";
 
 const shopify = shopifyApi({
   // The next 4 values are typically read from environment variables for added security
-  apiKey: "d48d977fe44807edb70bb82c55146f1d",
-  apiSecretKey: "0191930fa2f352dd457ca59ade32fd07",
+  apiKey: process.env.api_key,
+  apiSecretKey: process.env.api_secret as string,
   scopes: ["read_products"],
   isEmbeddedApp: false,
   apiVersion: LATEST_API_VERSION,
