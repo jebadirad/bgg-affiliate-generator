@@ -21,6 +21,11 @@ const PATH_TO_MAIN = new URL(
   import.meta.url
 );
 
+const PATH_TO_RPG = new URL(
+  "../files/export_rpgitems_primary.csv",
+  import.meta.url
+);
+
 type BGGUpload = {
   gameid: string;
   url: string;
@@ -56,7 +61,7 @@ const getAllProducts = async ({
 > => {
   const queryString = `{
         products(first: 20, ${after ? `after: "${after}"` : ""} 
-            query: "status:Active tag:boardgame AND -tag:used"
+            query: "status:Active -tag:used AND (tag:boardgame OR tag:rpg OR tag:miniatures)"
         ){
             edges {
                 node {
@@ -130,6 +135,10 @@ async function main() {
   const primaries = (await neatCsv(fs.createReadStream(PATH_TO_MAIN), {
     headers: ["objectid", "name"],
   })) as Array<{ objectid: string; name: string }>;
+  const rpgs = (await neatCsv(fs.createReadStream(PATH_TO_RPG), {
+    headers: ["objectid", "name"],
+  })) as Array<{ objectid: string; name: string }>;
+
   const matchedProducts = products.filter<{
     handle: string;
     metafield: string;
@@ -148,6 +157,13 @@ async function main() {
         });
         if (find) {
           return true;
+        } else {
+          const findRPG = rpgs.find((v) => {
+            return v.objectid === val.metafield;
+          });
+          if (findRPG) {
+            return true;
+          }
         }
       }
       return false;
