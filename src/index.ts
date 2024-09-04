@@ -5,7 +5,9 @@ import * as fs from "node:fs";
 import { createObjectCsvWriter } from "csv-writer";
 import "@shopify/shopify-api/adapters/node";
 import { shopifyApi, LATEST_API_VERSION } from "@shopify/shopify-api";
-
+//@ts-ignore
+import { fetch, CookieJar } from "node-fetch-cookies";
+import { fileFromSync, FormData } from "node-fetch";
 const shopify = shopifyApi({
   // The next 4 values are typically read from environment variables for added security
   apiKey: process.env.api_key,
@@ -25,6 +27,10 @@ const PATH_TO_RPG = new URL(
   "../files/export_rpgitems_primary.csv",
   import.meta.url
 );
+
+const bggUsername = process.env.bggaccountusername;
+const bggPw = process.env.bggaccountpw;
+const bggDomain = "boardgamegeek.com";
 
 type BGGUpload = {
   gameid: string;
@@ -61,13 +67,13 @@ const getAllProducts = async ({
 > => {
   const queryString = `{
         products(first: 20, ${after ? `after: "${after}"` : ""} 
-            query: "status:Active -tag:used AND (tag:boardgame OR tag:rpg OR tag:miniatures)"
+            query: "status:Active AND ((product_type:'Board Game') OR (product_type:'Board Games') OR (product_type:'Card Game') OR (product_type:'Dice Game') OR (product_type:'Non-Collectible Card Games') OR (tag:boardgame OR (tag:rpg AND -tag:rpg dice sets) OR tag:miniatures))"
         ){
             edges {
                 node {
                     handle
                     priceRangeV2 {
-                        maxVariantPrice {
+                        minVariantPrice {
                             amount
                         }
                     }
@@ -96,7 +102,7 @@ const getAllProducts = async ({
               value: string;
             };
             priceRangeV2: {
-              maxVariantPrice: {
+              minVariantPrice: {
                 amount: number;
               };
             };
@@ -117,10 +123,17 @@ const getAllProducts = async ({
       return {
         handle,
         metafield: metafield ? metafield.value : null,
-        price: priceRangeV2.maxVariantPrice.amount,
+        price:
+          Math.round(
+            (priceRangeV2.minVariantPrice.amount -
+              priceRangeV2.minVariantPrice.amount * 0.05 +
+              Number.EPSILON) *
+              100
+          ) / 100,
       };
     }
   );
+  console.log(JSON.stringify(products));
   if (products.pageInfo.hasNextPage) {
     const nextPage = await getAllProducts({
       after: products.pageInfo.endCursor,
@@ -131,6 +144,7 @@ const getAllProducts = async ({
 };
 
 async function main() {
+  const cookieJar = new CookieJar();
   const products = await getAllProducts({});
   const primaries = (await neatCsv(fs.createReadStream(PATH_TO_MAIN), {
     headers: ["objectid", "name"],
@@ -138,7 +152,11 @@ async function main() {
   const rpgs = (await neatCsv(fs.createReadStream(PATH_TO_RPG), {
     headers: ["objectid", "name"],
   })) as Array<{ objectid: string; name: string }>;
-
+  const missMatcheddProducts: {
+    handle: string;
+    metafield: string | null;
+    price: number;
+  }[] = [];
   const matchedProducts = products.filter<{
     handle: string;
     metafield: string;
@@ -166,6 +184,7 @@ async function main() {
           }
         }
       }
+      missMatcheddProducts.push(val);
       return false;
     }
   );
@@ -212,5 +231,59 @@ async function main() {
   });
   await writer.writeRecords(formattedProducts);
   console.log("done");
+
+  const failedWriter = createObjectCsvWriter({
+    path: "files/failed.csv",
+    header: [
+      {
+        id: "handle",
+        title: "handle",
+      },
+      {
+        id: "metafield",
+        title: "metafield",
+      },
+      {
+        id: "price",
+        title: "price",
+      },
+    ],
+  });
+  await failedWriter.writeRecords(missMatcheddProducts);
+  console.log("done");
+
+  console.log("logging into bgg");
+
+  const loginResponse = await fetch(
+    cookieJar,
+    `https://${bggDomain}/login/api/v1`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        credentials: { username: bggUsername, password: bggPw },
+      }),
+    }
+  );
+  console.log(loginResponse.status);
+  console.log("sending request");
+  const formData = new FormData();
+
+  formData.set("action", "bulkupload");
+  formData.set("filename", fileFromSync("files/out.csv"), "out.csv");
+  const sendFile = await fetch(
+    cookieJar,
+    `https://${bggDomain}/geekaffiliate.php`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+      body: formData,
+    }
+  );
+  console.log(sendFile.status);
 }
 main();
