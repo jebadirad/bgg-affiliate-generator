@@ -17,16 +17,8 @@ const shopify = shopifyApi({
   apiVersion: LATEST_API_VERSION,
   hostName: "localhost",
 });
-
-const PATH_TO_MAIN = new URL(
-  "../files/export_boardgames_primary.csv",
-  import.meta.url
-);
-
-const PATH_TO_RPG = new URL(
-  "../files/export_rpgitems_primary.csv",
-  import.meta.url
-);
+const PATH_TO_MAIN = require.resolve("../files/export_boardgames_primary.csv");
+const PATH_TO_RPG = require.resolve("../files/export_rpgitems_primary.csv");
 
 const bggUsername = process.env.bggaccountusername;
 const bggPw = process.env.bggaccountpw;
@@ -292,4 +284,3 @@ export async function main() {
   );
   console.log(sendFile.status);
 }
-main();

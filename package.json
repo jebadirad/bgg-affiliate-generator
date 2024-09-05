@@ -22,6 +22,8 @@
   "dependencies": {
     "@netlify/functions": "^2.8.1",
     "@shopify/shopify-api": "^8.0.1",
+    "@vercel/functions": "^1.4.1",
+    "@vercel/node": "^3.2.12",
     "csv-parser": "^3.0.0",
     "csv-writer": "^1.6.0",
     "dotenv": "^16.3.1",
