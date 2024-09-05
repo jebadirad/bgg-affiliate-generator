@@ -207,7 +207,7 @@ export async function main() {
     }
   );
   const writer = createObjectCsvWriter({
-    path: "files/out.csv",
+    path: path.join("/tmp", "out.csv"),
     header: [
       {
         id: "gameid",
@@ -239,7 +239,7 @@ export async function main() {
   console.log("done");
 
   const failedWriter = createObjectCsvWriter({
-    path: "files/failed.csv",
+    path: path.join("/tmp", "failed.csv"),
     header: [
       {
         id: "handle",
@@ -278,7 +278,7 @@ export async function main() {
   const formData = new FormData();
 
   formData.set("action", "bulkupload");
-  formData.set("filename", fileFromSync("files/out.csv"), "out.csv");
+  formData.set("filename", fileFromSync("/tmp/out.csv"), "out.csv");
   const sendFile = await fetch(
     cookieJar,
     `https://${bggDomain}/geekaffiliate.php`,
