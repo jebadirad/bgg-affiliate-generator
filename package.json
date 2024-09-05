@@ -20,6 +20,7 @@
     "typescript": "^5.2.2"
   },
   "dependencies": {
+    "@netlify/functions": "^2.8.1",
     "@shopify/shopify-api": "^8.0.1",
     "csv-parser": "^3.0.0",
     "csv-writer": "^1.6.0",
