@@ -62,6 +62,7 @@ const getAllProducts = async ({
   {
     handle: string;
     metafield: string | null;
+    totalInventory: number;
     price: number;
   }[]
 > => {
@@ -72,6 +73,7 @@ const getAllProducts = async ({
             edges {
                 node {
                     handle
+                    totalInventory
                     priceRangeV2 {
                         minVariantPrice {
                             amount
@@ -98,6 +100,7 @@ const getAllProducts = async ({
         edges: Array<{
           node: {
             handle: string;
+            totalInventory: number;
             metafield: {
               value: string;
             };
@@ -119,9 +122,10 @@ const getAllProducts = async ({
   });
 
   const formattedProducts = products.edges.map(
-    ({ node: { handle, metafield, priceRangeV2 } }) => {
+    ({ node: { handle, metafield, priceRangeV2, totalInventory } }) => {
       return {
         handle,
+        totalInventory: totalInventory,
         metafield: metafield ? metafield.value : null,
         price:
           Math.round(
@@ -160,6 +164,7 @@ async function main() {
   const matchedProducts = products.filter<{
     handle: string;
     metafield: string;
+    totalInventory: number;
     price: number;
   }>(
     (
@@ -168,6 +173,7 @@ async function main() {
       handle: string;
       metafield: string;
       price: number;
+      totalInventory: number;
     } => {
       if (val.metafield) {
         const find = primaries.find((v) => {
@@ -189,13 +195,13 @@ async function main() {
     }
   );
   const formattedProducts: Array<BGGUpload> = matchedProducts.map(
-    ({ metafield, price, handle }) => {
+    ({ metafield, price, handle, totalInventory }) => {
       return {
         currency: "USD",
-        enabled: 1,
+        enabled: totalInventory > 0 ? 1 : 0,
         gameid: metafield,
         price,
-        show_from: 0,
+        show_from: 1,
         url: affiliateUrlBuilder({ handle }),
       };
     }
