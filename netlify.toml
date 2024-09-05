@@ -1,0 +1,2 @@
+[functions."productpush"]
+    included_files = ["files/**.csv"]
