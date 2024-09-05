@@ -1,7 +1,7 @@
 node_modules
 build
 
-files/**.csv
+
 .env
 # Local Netlify folder
 .netlify
