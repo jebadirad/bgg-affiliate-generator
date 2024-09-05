@@ -2,6 +2,7 @@ import "dotenv/config";
 import neatCsv from "neat-csv";
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { createObjectCsvWriter } from "csv-writer";
 import "@shopify/shopify-api/adapters/node";
 import { shopifyApi, LATEST_API_VERSION } from "@shopify/shopify-api";
@@ -17,8 +18,15 @@ const shopify = shopifyApi({
   apiVersion: LATEST_API_VERSION,
   hostName: "localhost",
 });
-const PATH_TO_MAIN = require.resolve("../files/export_boardgames_primary.csv");
-const PATH_TO_RPG = require.resolve("../files/export_rpgitems_primary.csv");
+const PATH_TO_MAIN = path.join(
+  process.cwd(),
+  "../files/export_boardgames_primary.csv"
+);
+
+const PATH_TO_RPG = path.join(
+  process.cwd(),
+  "../files/export_rpgitems_primary.csv"
+);
 
 const bggUsername = process.env.bggaccountusername;
 const bggPw = process.env.bggaccountpw;
