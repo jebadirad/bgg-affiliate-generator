@@ -20,12 +20,12 @@ const shopify = shopifyApi({
 });
 const PATH_TO_MAIN = path.join(
   process.cwd(),
-  "../files/export_boardgames_primary.csv"
+  "./files/export_boardgames_primary.csv"
 );
 
 const PATH_TO_RPG = path.join(
   process.cwd(),
-  "../files/export_rpgitems_primary.csv"
+  "./files/export_rpgitems_primary.csv"
 );
 
 const bggUsername = process.env.bggaccountusername;
