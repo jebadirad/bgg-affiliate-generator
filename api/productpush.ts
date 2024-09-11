@@ -21,7 +21,7 @@ const shopify = shopifyApi({
   scopes: ["read_products"],
   isEmbeddedApp: false,
   apiVersion: LATEST_API_VERSION,
-  hostName: "localhost",
+  hostName: process.env.hostname as string,
 });
 const PATH_TO_MAIN = path.join(
   process.cwd(),
