@@ -398,10 +398,10 @@ export async function main() {
   return;
 }
 
-export default function handler(
+export default async function handler(
   request: VercelRequest,
   response: VercelResponse
 ) {
-  waitUntil(main().then(() => console.log("done")));
+  await main();
   return response.send("hello world");
 }
