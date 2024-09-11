@@ -13,6 +13,7 @@ import { shopifyApi, LATEST_API_VERSION } from "@shopify/shopify-api";
 //@ts-ignore
 import { fetch, CookieJar } from "node-fetch-cookies";
 import { fileFromSync, FormData, Response } from "node-fetch";
+import { stringify } from "node:querystring";
 const shopify = shopifyApi({
   // The next 4 values are typically read from environment variables for added security
   apiKey: process.env.api_key,
@@ -142,13 +143,95 @@ const getAllProducts = async ({
     }
   );
   console.log(JSON.stringify(products));
-  /*  if (products.pageInfo.hasNextPage) {
+  if (products.pageInfo.hasNextPage) {
     const nextPage = await getAllProducts({
       after: products.pageInfo.endCursor,
     });
     return formattedProducts.concat(nextPage);
-  } */
+  }
   return formattedProducts;
+};
+
+const prepareToUploadToShopify = async () => {
+  const mutationString = `
+    mutation generateStagedUploads {
+  stagedUploadsCreate(input: [
+    {
+      filename: "bgg_file_list",
+      mimeType: "text/csv",
+      resource: FILE,
+    },
+  ])
+    {
+    stagedTargets {
+      url
+      resourceUrl
+      parameters {
+        name
+        value
+      }
+    }
+    userErrors {
+      field, message
+    }
+  }
+}
+  `;
+
+  const res = await client.query<{
+    data: {
+      stagedUploadsCreate: {
+        stagedTargets: {
+          url: string;
+          resourceUrl: string;
+          parameters: {
+            name: string;
+            value: string;
+          }[];
+        }[];
+        userErrors: {
+          field: string[];
+          message: string;
+        }[];
+      };
+    };
+  }>({
+    data: mutationString,
+  });
+  const { stagedUploadsCreate } = res.body.data;
+  if (stagedUploadsCreate.userErrors.length) {
+    //no errors
+    throw new Error(JSON.stringify(stagedUploadsCreate.userErrors));
+  }
+  return stagedUploadsCreate.stagedTargets;
+};
+
+const updateFile = async ({
+  originalSource,
+  fileId,
+}: {
+  originalSource: string;
+  fileId: string;
+}) => {
+  const mutation = `
+  mutation FileUpdate($input: [FileUpdateInput!]!) {
+  fileUpdate(files: $input) {
+    userErrors {
+      code
+      field
+      message
+    }
+    files {
+      alt
+    }
+  }
+}`;
+
+  const res = await client.request(mutation, {
+    variables: {
+      input: [{ id: fileId, originalSource }],
+    },
+  });
 };
 
 export async function main() {
@@ -260,62 +343,58 @@ export async function main() {
     ],
   });
   await failedWriter.writeRecords(missMatcheddProducts);
-  console.log("done");
+  const preppedUpload = await prepareToUploadToShopify();
+  for (const prep of preppedUpload) {
+    const { parameters, resourceUrl, url } = prep;
+    console.log(resourceUrl);
+    console.log(url);
+    const putHeaders: Record<string, any> = {};
+    parameters.forEach(({ name, value }) => {
+      console.log(name, value);
+      putHeaders[name] = value;
+    });
+    //const blob = new Blob([await fs.promises.readFile("/tmp/out.csv")]);
+    const fileStream = fs.createReadStream("/tmp/out.csv");
+    //formData.append("file", blob);
 
-  console.log("logging into bgg");
-
-  const loginResponse = await fetch(
-    cookieJar,
-    `https://${bggDomain}/login/api/v1`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      credentials: "include",
-      body: JSON.stringify({
-        credentials: { username: bggUsername, password: bggPw },
-      }),
+    const sendFile: Response = await fetch(cookieJar, url, {
+      method: "PUT",
+      headers: putHeaders,
+      body: fileStream,
+    });
+    if (sendFile.ok) {
+      await updateFile({
+        originalSource: resourceUrl,
+        fileId: "gid://shopify/GenericFile/39399716520220",
+      });
     }
-  );
-  console.log(
-    JSON.stringify({
-      credentials: { username: bggUsername, password: bggPw },
-    })
-  );
-  console.log(await loginResponse.text());
-  console.log("sending request");
-  const formData = new FormData();
-  cookieJar.cookies.forEach((cookie: Map<string, any>, key: string) => {
-    console.log(key);
-    console.log(cookie);
-    const username = cookie.get("bggusername");
-    username.value = bggUsername;
-    cookie.set("bggusername", username);
-    const password = cookie.get("bggpassword");
-    password.value = bggPw;
-    cookie.set("bggpassword", password);
-  });
-  cookieJar.cookies.forEach((cookie: Map<string, any>, key: string) => {
-    console.log(key);
-    console.log(cookie);
-  });
-  formData.append("action", "bulkupload");
-  const blob = new Blob([await fs.promises.readFile("/tmp/out.csv")]);
-  console.log(blob);
-  formData.append("filename", blob);
+  }
+  const missPrepProduct = await prepareToUploadToShopify();
+  for (const prep of missPrepProduct) {
+    const { parameters, resourceUrl, url } = prep;
+    console.log(resourceUrl);
+    console.log(url);
+    const putHeaders: Record<string, any> = {};
+    parameters.forEach(({ name, value }) => {
+      console.log(name, value);
+      putHeaders[name] = value;
+    });
+    //const blob = new Blob([await fs.promises.readFile("/tmp/out.csv")]);
+    const fileStream = fs.createReadStream("/tmp/failed.csv");
+    //formData.append("file", blob);
 
-  const sendFile: Response = await fetch(
-    cookieJar,
-    `https://boardgamegeek.com/geekaffiliate.php`,
-    {
-      method: "POST",
-      headers: {},
-      body: formData,
+    const sendFile: Response = await fetch(cookieJar, url, {
+      method: "PUT",
+      headers: putHeaders,
+      body: fileStream,
+    });
+    if (sendFile.ok) {
+      await updateFile({
+        originalSource: resourceUrl,
+        fileId: "gid://shopify/GenericFile/39400384200988",
+      });
     }
-  );
-  console.log(sendFile.status);
-  console.log(await sendFile.text());
+  }
   return;
 }
 

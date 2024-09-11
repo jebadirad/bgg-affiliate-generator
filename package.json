@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@netlify/functions": "^2.8.1",
-    "@shopify/shopify-api": "^8.0.1",
+    "@shopify/shopify-api": "^11.4.0",
     "@vercel/functions": "^1.4.1",
     "@vercel/node": "^3.2.12",
     "csv-parser": "^3.0.0",
