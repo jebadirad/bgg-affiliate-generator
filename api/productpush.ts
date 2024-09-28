@@ -214,7 +214,7 @@ const updateFile = async ({
   fileId: string;
 }) => {
   const mutation = `
-  mutation FileUpdate($input: [FileUpdateInput!]!) {
+  mutation FileCreate($input: [FileCreateInput!]!) {
   fileUpdate(files: $input) {
     userErrors {
       code
@@ -229,7 +229,7 @@ const updateFile = async ({
 
   const res = await client.request(mutation, {
     variables: {
-      input: [{ id: fileId, originalSource }],
+      input: [{ originalSource, duplicateResolutionMode: "REPLACE" }],
     },
   });
 };
