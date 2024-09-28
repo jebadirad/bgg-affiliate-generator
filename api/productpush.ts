@@ -226,12 +226,17 @@ const updateFile = async ({
     }
   }
 }`;
-
+try{
+  
   const res = await client.request(mutation, {
     variables: {
       input: [{ originalSource, duplicateResolutionMode: "REPLACE" }],
     },
   });
+
+}
+  catch(e){
+    console.log(JSON.stringify(e));
 };
 
 export async function main() {
