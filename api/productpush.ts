@@ -265,7 +265,7 @@ export async function main() {
   });
   await failedWriter.writeRecords(missMatcheddProducts);
   
-  await put("bgg_products.csv", fileFromSync("/tmp/out.csv"), {access: "public"});
+  await put("bgg_products.csv", fileFromSync("/tmp/out.csv"), {access: "public", addRandomSuffix: false});
 
   
   return;
