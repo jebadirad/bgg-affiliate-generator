@@ -5,6 +5,7 @@ import { waitUntil } from "@vercel/functions";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import * as fs from "node:fs";
+import { put } from '@vercel/blob';
 
 import * as path from "node:path";
 import { createObjectCsvWriter } from "csv-writer";
@@ -152,93 +153,7 @@ const getAllProducts = async ({
   return formattedProducts;
 };
 
-const prepareToUploadToShopify = async () => {
-  const mutationString = `
-    mutation generateStagedUploads {
-  stagedUploadsCreate(input: [
-    {
-      filename: "bgg_file_list",
-      mimeType: "text/csv",
-      resource: FILE,
-    },
-  ])
-    {
-    stagedTargets {
-      url
-      resourceUrl
-      parameters {
-        name
-        value
-      }
-    }
-    userErrors {
-      field, message
-    }
-  }
-}
-  `;
 
-  const res = await client.query<{
-    data: {
-      stagedUploadsCreate: {
-        stagedTargets: {
-          url: string;
-          resourceUrl: string;
-          parameters: {
-            name: string;
-            value: string;
-          }[];
-        }[];
-        userErrors: {
-          field: string[];
-          message: string;
-        }[];
-      };
-    };
-  }>({
-    data: mutationString,
-  });
-  const { stagedUploadsCreate } = res.body.data;
-  if (stagedUploadsCreate.userErrors.length) {
-    //no errors
-    throw new Error(JSON.stringify(stagedUploadsCreate.userErrors));
-  }
-  return stagedUploadsCreate.stagedTargets;
-};
-
-const updateFile = async ({
-  originalSource,
-  fileId,
-}: {
-  originalSource: string;
-  fileId: string;
-}) => {
-  const mutation = `
-  mutation FileCreate($input: [FileCreateInput!]!) {
-  fileUpdate(files: $input) {
-    userErrors {
-      code
-      field
-      message
-    }
-    files {
-      alt
-    }
-  }
-}`;
-try{
-  
-  const res = await client.request(mutation, {
-    variables: {
-      input: [{ originalSource, duplicateResolutionMode: "REPLACE" }],
-    },
-  });
-
-}
-  catch(e){
-    console.log(JSON.stringify(e));
-  };
-};
 
 export async function main() {
   const cookieJar = new CookieJar();
@@ -349,58 +264,10 @@ export async function main() {
     ],
   });
   await failedWriter.writeRecords(missMatcheddProducts);
-  const preppedUpload = await prepareToUploadToShopify();
-  for (const prep of preppedUpload) {
-    const { parameters, resourceUrl, url } = prep;
-    console.log(resourceUrl);
-    console.log(url);
-    const putHeaders: Record<string, any> = {};
-    parameters.forEach(({ name, value }) => {
-      console.log(name, value);
-      putHeaders[name] = value;
-    });
-    //const blob = new Blob([await fs.promises.readFile("/tmp/out.csv")]);
-    const fileStream = fs.createReadStream("/tmp/out.csv");
-    //formData.append("file", blob);
+  
+  await put("bgg_products.csv", fileFromSync("/tmp/out.csv"), {access: "public"});
 
-    const sendFile: Response = await fetch(cookieJar, url, {
-      method: "PUT",
-      headers: putHeaders,
-      body: fileStream,
-    });
-    if (sendFile.ok) {
-      await updateFile({
-        originalSource: resourceUrl,
-        fileId: "gid://shopify/GenericFile/39399716520220",
-      });
-    }
-  }
-  const missPrepProduct = await prepareToUploadToShopify();
-  for (const prep of missPrepProduct) {
-    const { parameters, resourceUrl, url } = prep;
-    console.log(resourceUrl);
-    console.log(url);
-    const putHeaders: Record<string, any> = {};
-    parameters.forEach(({ name, value }) => {
-      console.log(name, value);
-      putHeaders[name] = value;
-    });
-    //const blob = new Blob([await fs.promises.readFile("/tmp/out.csv")]);
-    const fileStream = fs.createReadStream("/tmp/failed.csv");
-    //formData.append("file", blob);
-
-    const sendFile: Response = await fetch(cookieJar, url, {
-      method: "PUT",
-      headers: putHeaders,
-      body: fileStream,
-    });
-    if (sendFile.ok) {
-      await updateFile({
-        originalSource: resourceUrl,
-        fileId: "gid://shopify/GenericFile/39400384200988",
-      });
-    }
-  }
+  
   return;
 }
 
