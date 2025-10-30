@@ -1,7 +1,6 @@
 import "dotenv/config";
 import neatCsv from "neat-csv";
 
-import { waitUntil } from "@vercel/functions";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import * as fs from "node:fs";
@@ -11,10 +10,7 @@ import * as path from "node:path";
 import { createObjectCsvWriter } from "csv-writer";
 import "@shopify/shopify-api/adapters/node";
 import { shopifyApi, LATEST_API_VERSION } from "@shopify/shopify-api";
-//@ts-ignore
-import { fetch, CookieJar } from "node-fetch-cookies";
-import { fileFromSync, FormData, Response } from "node-fetch";
-import { stringify } from "node:querystring";
+import { fileFromSync } from "node-fetch";
 const shopify = shopifyApi({
   // The next 4 values are typically read from environment variables for added security
   apiKey: process.env.api_key,
@@ -34,9 +30,6 @@ const PATH_TO_RPG = path.join(
   "./files/export_rpgitems_primary.csv"
 );
 
-const bggUsername = process.env.bggaccountusername;
-const bggPw = process.env.bggaccountpw;
-const bggDomain = "boardgamegeek.com";
 
 type BGGUpload = {
   gameid: string;
@@ -66,10 +59,13 @@ const getAllProducts = async ({
   after?: string;
 }): Promise<
   {
+    id: string;
     handle: string;
     metafield: string | null;
     totalInventory: number;
     price: number;
+    // collect first variant barcode (simplified assumption)
+    barcode: string | null;
   }[]
 > => {
   const queryString = `{
@@ -78,6 +74,7 @@ const getAllProducts = async ({
         ){
             edges {
                 node {
+                    id
                     handle
                     totalInventory
                     priceRangeV2 {
@@ -87,6 +84,9 @@ const getAllProducts = async ({
                     }
                     metafield(key: "bgg_game_id", namespace: "custom"){
                         value
+                    }
+                    variants(first: 1){
+                      edges { node { barcode } }
                     }
                 }
             }
@@ -105,22 +105,15 @@ const getAllProducts = async ({
       products: {
         edges: Array<{
           node: {
+            id: string;
             handle: string;
             totalInventory: number;
-            metafield: {
-              value: string;
-            };
-            priceRangeV2: {
-              minVariantPrice: {
-                amount: number;
-              };
-            };
+            metafield: { value: string } | null;
+            priceRangeV2: { minVariantPrice: { amount: number } };
+            variants: { edges: Array<{ node: { barcode: string | null } }> };
           };
         }>;
-        pageInfo: {
-          hasNextPage: boolean;
-          endCursor: string;
-        };
+        pageInfo: { hasNextPage: boolean; endCursor: string };
       };
     };
   }>({
@@ -128,18 +121,16 @@ const getAllProducts = async ({
   });
 
   const formattedProducts = products.edges.map(
-    ({ node: { handle, metafield, priceRangeV2, totalInventory } }) => {
+    ({ node: { id, handle, metafield, priceRangeV2, totalInventory, variants } }) => {
+      const raw = Number(priceRangeV2.minVariantPrice.amount); // already dollars
+      const rounded = Math.round((raw + Number.EPSILON) * 100) / 100; // ensure two decimals
       return {
+        id,
         handle,
         totalInventory: totalInventory,
         metafield: metafield ? metafield.value : null,
-        price:
-          Math.round(
-            (priceRangeV2.minVariantPrice.amount -
-              priceRangeV2.minVariantPrice.amount * 0.05 +
-              Number.EPSILON) *
-              100
-          ) / 100,
+        price: rounded,
+        barcode: variants.edges[0]?.node.barcode || null,
       };
     }
   );
@@ -153,61 +144,151 @@ const getAllProducts = async ({
   return formattedProducts;
 };
 
+import csvParser from 'csv-parser';
 
+// Helper to normalize barcodes (digits only)
+const normalizeBarcode = (val: string | null | undefined) => {
+  if (!val) return null;
+  const digits = val.replace(/[^0-9Xx]/g, '').toUpperCase();
+  return digits.length ? digits : null;
+};
+
+// Load a two-column CSV (objectid,<idType>) into Map<identifier, Set<objectid>>
+async function loadIdentifierIndex(filePath: string): Promise<Map<string, Set<string>>> {
+  const map = new Map<string, Set<string>>();
+  await new Promise<void>((resolve, reject) => {
+    fs.createReadStream(filePath)
+      .pipe(csvParser())
+      .on('data', (row: any) => {
+        const objectid = (row.objectid || '').toString().trim();
+        const idValRaw = Object.keys(row).find(k => k !== 'objectid');
+        if (!idValRaw) return;
+        const idVal = normalizeBarcode(row[idValRaw]);
+        if (!idVal || !objectid) return;
+        if (!map.has(idVal)) map.set(idVal, new Set());
+        map.get(idVal)!.add(objectid);
+      })
+      .on('end', () => resolve())
+      .on('error', reject);
+  });
+  return map;
+}
+
+let upcIndex: Map<string, Set<string>> | null = null;
+let gtinIndex: Map<string, Set<string>> | null = null;
+let isbnIndex: Map<string, Set<string>> | null = null;
+
+async function ensureIndexes() {
+  if (upcIndex && gtinIndex && isbnIndex) return;
+  const base = path.join(process.cwd(), 'files');
+  // Filenames based on existing repo structure
+  const UPC_PATH = path.join(base, 'export_boardgames_external_ids_upc.csv');
+  const GTIN_PATH = path.join(base, 'export_boardgames_external_ids_gtin.csv');
+  const ISBN_PATH = path.join(base, 'export_boardgames_external_ids_isbn.csv');
+  [upcIndex, gtinIndex, isbnIndex] = await Promise.all([
+    loadIdentifierIndex(UPC_PATH),
+    loadIdentifierIndex(GTIN_PATH),
+    loadIdentifierIndex(ISBN_PATH),
+  ]);
+}
+
+// Shopify mutations
+const PRODUCT_UPDATE_MUTATION = `mutation productUpdate($id: ID!, $metafields: [MetafieldsInput!]!) {\n  productUpdate(input: { id: $id, metafields: $metafields }) {\n    userErrors { field message }\n  }\n}`;
+const ADD_TAGS_MUTATION = `mutation tagsAdd($id: ID!, $tags: [String!]!) {\n  tagsAdd(id: $id, tags: $tags) { userErrors { field message } }\n}`;
+
+async function setBGGMetafield(productId: string, objectid: string) {
+  const dry = process.env.DRY_RUN === '1';
+  if (dry) {
+    console.log(`[DRY_RUN] Would set metafield bgg_game_id=${objectid} on ${productId}`);
+    return;
+  }
+  const res = await client.query({
+    data: {
+      query: PRODUCT_UPDATE_MUTATION,
+      variables: {
+        id: productId,
+        metafields: [
+          {
+            namespace: 'custom',
+            key: 'bgg_game_id',
+            type: 'single_line_text_field',
+            value: objectid,
+          },
+        ],
+      },
+    },
+  });
+  console.log('metafield set response', JSON.stringify(res.body));
+}
+
+async function tagProductManual(productId: string) {
+  const dry = process.env.DRY_RUN === '1';
+  if (dry) {
+    console.log(`[DRY_RUN] Would tag product ${productId} needs_bgg_manual`);
+    return;
+  }
+  const res = await client.query({
+    data: {
+      query: ADD_TAGS_MUTATION,
+      variables: { id: productId, tags: ['needs_bgg_manual'] },
+    },
+  });
+  console.log('tag add response', JSON.stringify(res.body));
+}
+
+// Attempt single unique match given barcode
+function matchBarcode(barcode: string | null): string | null {
+  if (!barcode) return null;
+  const norm = normalizeBarcode(barcode);
+  if (!norm) return null;
+  // Priority: UPC > GTIN > ISBN
+  const tryIndex = (idx: Map<string, Set<string>> | null) => {
+    if (!idx) return null;
+    const set = idx.get(norm);
+    if (!set) return null;
+    if (set.size === 1) return [...set][0];
+    return null; // ambiguous -> treat as no unique match
+  };
+  return (
+    tryIndex(upcIndex) ||
+    tryIndex(gtinIndex) ||
+    tryIndex(isbnIndex) ||
+    null
+  );
+}
 
 export async function main() {
-  const cookieJar = new CookieJar();
+  await ensureIndexes();
   const products = await getAllProducts({});
+  // Matching phase for products missing metafield
+  for (const p of products) {
+    if (p.metafield) continue; // Tier 0 keep existing
+    const match = matchBarcode(p.barcode);
+    if (match) {
+      await setBGGMetafield(p.id, match);
+      p.metafield = match; // update in-memory for later CSV generation
+    } else {
+      await tagProductManual(p.id);
+    }
+  }
+  // After matching, load primary/rpg ids once for validation
   const primaries = (await neatCsv(fs.createReadStream(PATH_TO_MAIN), {
     headers: ["objectid", "name"],
   })) as Array<{ objectid: string; name: string }>;
   const rpgs = (await neatCsv(fs.createReadStream(PATH_TO_RPG), {
     headers: ["objectid", "name"],
   })) as Array<{ objectid: string; name: string }>;
-  const missMatcheddProducts: {
-    handle: string;
-    metafield: string | null;
-    price: number;
-  }[] = [];
-  const matchedProducts = products.filter<{
-    handle: string;
-    metafield: string;
-    totalInventory: number;
-    price: number;
-  }>(
-    (
-      val
-    ): val is {
-      handle: string;
-      metafield: string;
-      price: number;
-      totalInventory: number;
-    } => {
-      if (val.metafield) {
-        const find = primaries.find((v) => {
-          return v.objectid === val.metafield;
-        });
-        if (find) {
-          return true;
-        } else {
-          const findRPG = rpgs.find((v) => {
-            return v.objectid === val.metafield;
-          });
-          if (findRPG) {
-            return true;
-          }
-        }
-      }
-      missMatcheddProducts.push(val);
-      return false;
-    }
-  );
+  const validIds = new Set<string>([...primaries.map(p=>p.objectid), ...rpgs.map(r=>r.objectid)]);
+
+  const matchedProducts = products.filter(p => p.metafield && validIds.has(p.metafield));
+  const failedProducts = products.filter(p => !p.metafield || !validIds.has(p.metafield));
+
   const formattedProducts: Array<BGGUpload> = matchedProducts.map(
     ({ metafield, price, handle, totalInventory }) => {
       return {
         currency: "USD",
         enabled: totalInventory > 0 ? 1 : 0,
-        gameid: metafield,
+        gameid: metafield as string,
         price,
         show_from: 1,
         url: affiliateUrlBuilder({ handle }),
@@ -217,57 +298,43 @@ export async function main() {
   const writer = createObjectCsvWriter({
     path: path.join("/tmp", "out.csv"),
     header: [
-      {
-        id: "gameid",
-        title: "gameid",
-      },
-      {
-        id: "url",
-        title: "url",
-      },
-      {
-        id: "price",
-        title: "price",
-      },
-      {
-        id: "currency",
-        title: "currency",
-      },
-      {
-        id: "enabled",
-        title: "enabled",
-      },
-      {
-        id: "show_from",
-        title: "show_from",
-      },
+      { id: "gameid", title: "gameid" },
+      { id: "url", title: "url" },
+      { id: "price", title: "price" },
+      { id: "currency", title: "currency" },
+      { id: "enabled", title: "enabled" },
+      { id: "show_from", title: "show_from" },
     ],
   });
   await writer.writeRecords(formattedProducts);
-  console.log("done");
+  console.log(`wrote matched CSV with ${formattedProducts.length} rows`);
 
+  // Failed CSV
   const failedWriter = createObjectCsvWriter({
     path: path.join("/tmp", "failed.csv"),
     header: [
-      {
-        id: "handle",
-        title: "handle",
-      },
-      {
-        id: "metafield",
-        title: "metafield",
-      },
-      {
-        id: "price",
-        title: "price",
-      },
+      { id: "id", title: "product_id" },
+      { id: "handle", title: "handle" },
+      { id: "barcode", title: "barcode" },
+      { id: "metafield", title: "metafield" },
+      { id: "price", title: "price" },
     ],
   });
-  await failedWriter.writeRecords(missMatcheddProducts);
-  
-  await put("bgg_products.csv", fileFromSync("/tmp/out.csv"), {access: "public", addRandomSuffix: false});
+  await failedWriter.writeRecords(
+    failedProducts.map(p => ({
+      id: p.id,
+      handle: p.handle,
+      barcode: p.barcode || '',
+      metafield: p.metafield || '',
+      price: p.price,
+    }))
+  );
+  console.log(`wrote failed CSV with ${failedProducts.length} rows`);
 
-  
+  // Upload both (failed kept private)
+  await put("bgg_products.csv", fileFromSync("/tmp/out.csv"), {access: "public", addRandomSuffix: false});
+  await put("bgg_failed_products.csv", fileFromSync("/tmp/failed.csv"), {access: "public", addRandomSuffix: false});
+
   return;
 }
 
