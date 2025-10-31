@@ -248,17 +248,34 @@ function matchBarcode(barcode: string | null): string | null {
 export async function main() {
   await ensureIndexes();
   const products = await getAllProducts({});
-  // Matching phase for products missing metafield
+  const mutationConcurrency = Number(process.env.MUTATION_CONCURRENCY || 8); // adjust via env
+  const queue: Promise<any>[] = [];
+  const runWithConcurrency = async (fn: () => Promise<any>) => {
+    if (queue.length >= mutationConcurrency) {
+      await Promise.race(queue);
+    }
+    const p = fn().finally(() => {
+      const idx = queue.indexOf(p);
+      if (idx >= 0) queue.splice(idx, 1);
+    });
+    queue.push(p);
+  };
   for (const p of products) {
     if (p.metafield) continue;
     const match = matchBarcode(p.barcode);
     if (match) {
-      await setBGGMetafield(p.id, match);
-      p.metafield = match;
+      await runWithConcurrency(async () => {
+        await setBGGMetafield(p.id, match);
+        p.metafield = match;
+      });
     } else {
-      await tagProductManual(p.id);
+      await runWithConcurrency(async () => {
+        await tagProductManual(p.id);
+      });
     }
   }
+  // Wait remaining mutations
+  await Promise.all(queue);
   // After matching, load primary/rpg ids once for validation
   const primaries = (await neatCsv(fs.createReadStream(PATH_TO_MAIN), {
     headers: ["objectid", "name"],
