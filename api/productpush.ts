@@ -12,10 +12,9 @@ import "@shopify/shopify-api/adapters/node";
 import { shopifyApi, LATEST_API_VERSION } from "@shopify/shopify-api";
 import { fileFromSync } from "node-fetch";
 const shopify = shopifyApi({
-  // The next 4 values are typically read from environment variables for added security
   apiKey: process.env.api_key,
   apiSecretKey: process.env.api_secret as string,
-  scopes: ["read_products"],
+  scopes: ["read_products", "write_products"],
   isEmbeddedApp: false,
   apiVersion: LATEST_API_VERSION,
   hostName: process.env.hostname as string,
@@ -193,7 +192,7 @@ async function ensureIndexes() {
 }
 
 // Shopify mutations
-const PRODUCT_UPDATE_MUTATION = `mutation productUpdate($id: ID!, $metafields: [MetafieldsInput!]!) {\n  productUpdate(input: { id: $id, metafields: $metafields }) {\n    userErrors { field message }\n  }\n}`;
+const PRODUCT_UPDATE_MUTATION = `mutation productUpdate($id: ID!, $metafields: [MetafieldInput!]!) {\n  productUpdate(product: { id: $id, metafields: $metafields }) {\n    userErrors { field message }\n  }\n}`;
 const ADD_TAGS_MUTATION = `mutation tagsAdd($id: ID!, $tags: [String!]!) {\n  tagsAdd(id: $id, tags: $tags) { userErrors { field message } }\n}`;
 
 async function setBGGMetafield(productId: string, objectid: string) {
@@ -218,6 +217,10 @@ async function setBGGMetafield(productId: string, objectid: string) {
       },
     },
   });
+  const errors = (res.body as any)?.data?.productUpdate?.userErrors;
+  if (errors && errors.length) {
+    console.error('productUpdate userErrors', errors);
+  }
   console.log('metafield set response', JSON.stringify(res.body));
 }
 
