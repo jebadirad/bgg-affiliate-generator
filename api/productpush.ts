@@ -63,36 +63,24 @@ const getAllProducts = async ({
     metafield: string | null;
     totalInventory: number;
     price: number;
-    // collect first variant barcode (simplified assumption)
     barcode: string | null;
   }[]
 > => {
   const queryString = `{
-        products(first: 20, ${after ? `after: "${after}"` : ""} 
-            query: "status:Active AND ((product_type:'Board Game') OR (product_type:'Board Games') OR (product_type:'Card Game') OR (product_type:'Dice Game') OR (product_type:'Non-Collectible Card Games') OR (tag:boardgame OR (tag:rpg AND -tag:rpg dice sets) OR tag:miniatures))"
+        products(first: 150, ${after ? `after: "${after}"` : ""} 
+            query: "status:Active AND ((product_type:'Board Game') OR (product_type:'Board Games') OR (product_type:'Card Game') OR (product_type:'Dice Game') OR (product_type:'Non-Collectible Card Games') OR (tag:boardgame OR (tag:rpg AND -tag:rpg dice sets) OR tag:miniatures)) AND -tag:needs_bgg_manual"
         ){
             edges {
                 node {
                     id
                     handle
                     totalInventory
-                    priceRangeV2 {
-                        minVariantPrice {
-                            amount
-                        }
-                    }
-                    metafield(key: "bgg_game_id", namespace: "custom"){
-                        value
-                    }
-                    variants(first: 1){
-                      edges { node { barcode } }
-                    }
+                    priceRangeV2 { minVariantPrice { amount } }
+                    metafield(key: "bgg_game_id", namespace: "custom"){ value }
+                    variants(first: 1){ edges { node { barcode } } }
                 }
             }
-            pageInfo {
-                hasNextPage
-                endCursor
-            }
+            pageInfo { hasNextPage endCursor }
         }
     }`;
   const {
@@ -121,23 +109,20 @@ const getAllProducts = async ({
 
   const formattedProducts = products.edges.map(
     ({ node: { id, handle, metafield, priceRangeV2, totalInventory, variants } }) => {
-      const raw = Number(priceRangeV2.minVariantPrice.amount); // already dollars
-      const rounded = Math.round((raw + Number.EPSILON) * 100) / 100; // ensure two decimals
+      const raw = Number(priceRangeV2.minVariantPrice.amount);
+      const rounded = Math.round((raw + Number.EPSILON) * 100) / 100;
       return {
         id,
         handle,
-        totalInventory: totalInventory,
+        totalInventory,
         metafield: metafield ? metafield.value : null,
         price: rounded,
         barcode: variants.edges[0]?.node.barcode || null,
       };
     }
   );
-  console.log(JSON.stringify(products));
   if (products.pageInfo.hasNextPage) {
-    const nextPage = await getAllProducts({
-      after: products.pageInfo.endCursor,
-    });
+    const nextPage = await getAllProducts({ after: products.pageInfo.endCursor });
     return formattedProducts.concat(nextPage);
   }
   return formattedProducts;
@@ -265,11 +250,11 @@ export async function main() {
   const products = await getAllProducts({});
   // Matching phase for products missing metafield
   for (const p of products) {
-    if (p.metafield) continue; // Tier 0 keep existing
+    if (p.metafield) continue;
     const match = matchBarcode(p.barcode);
     if (match) {
       await setBGGMetafield(p.id, match);
-      p.metafield = match; // update in-memory for later CSV generation
+      p.metafield = match;
     } else {
       await tagProductManual(p.id);
     }
