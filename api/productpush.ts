@@ -285,6 +285,35 @@ export async function main() {
   })) as Array<{ objectid: string; name: string }>;
   const validIds = new Set<string>([...primaries.map(p=>p.objectid), ...rpgs.map(r=>r.objectid)]);
 
+  // Coverage stats: which valid IDs have any barcode mapping across indexes
+  const allIndexIds = new Set<string>();
+  const collectIds = (idx: Map<string, Set<string>> | null) => {
+    if (!idx) return;
+    for (const set of idx.values()) {
+      for (const id of set) allIndexIds.add(id);
+    }
+  };
+  collectIds(upcIndex);
+  collectIds(gtinIndex);
+  collectIds(isbnIndex);
+  let mappedCount = 0;
+  for (const id of validIds) if (allIndexIds.has(id)) mappedCount++;
+  const missingMappingIds: { objectid: string; name: string }[] = [];
+  for (const p of primaries) if (!allIndexIds.has(p.objectid)) missingMappingIds.push(p);
+  for (const r of rpgs) if (!allIndexIds.has(r.objectid)) missingMappingIds.push(r);
+  console.log(`[coverage] total valid IDs=${validIds.size} have barcode mapping=${mappedCount} missing=${validIds.size - mappedCount}`);
+  // Write missing mapping CSV
+  const missingPath = path.join('/tmp', 'missing_barcode_mapping.csv');
+  const missingWriter = createObjectCsvWriter({
+    path: missingPath,
+    header: [
+      { id: 'objectid', title: 'objectid' },
+      { id: 'name', title: 'name' },
+    ],
+  });
+  await missingWriter.writeRecords(missingMappingIds);
+  console.log(`wrote missing mapping CSV with ${missingMappingIds.length} rows`);
+
   const matchedProducts = products.filter(p => p.metafield && validIds.has(p.metafield));
   const failedProducts = products.filter(p => !p.metafield || !validIds.has(p.metafield));
 
@@ -339,6 +368,7 @@ export async function main() {
   // Upload both (failed kept private)
   await put("bgg_products.csv", fileFromSync("/tmp/out.csv"), {access: "public", addRandomSuffix: false});
   await put("bgg_failed_products.csv", fileFromSync("/tmp/failed.csv"), {access: "public", addRandomSuffix: false});
+  await put("bgg_missing_barcode_mapping.csv", fileFromSync("/tmp/missing_barcode_mapping.csv"), {access: "public", addRandomSuffix: false});
 
   return;
 }
