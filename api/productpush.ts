@@ -1,4 +1,3 @@
-import "dotenv/config";
 import neatCsv from "neat-csv";
 
 import { waitUntil } from "@vercel/functions";
@@ -25,12 +24,12 @@ const shopify = shopifyApi({
 });
 const PATH_TO_MAIN = path.join(
   process.cwd(),
-  "./files/export_boardgames_primary.csv"
+  "./files/export_boardgames_primary.csv",
 );
 
 const PATH_TO_RPG = path.join(
   process.cwd(),
-  "./files/export_rpgitems_primary.csv"
+  "./files/export_rpgitems_primary.csv",
 );
 
 const bggUsername = process.env.bggaccountusername;
@@ -51,7 +50,7 @@ const affiliateUrlBuilder = ({ handle }: { handle: string }) => {
 };
 
 const session = shopify.session.customAppSession(
-  shopify.utils.sanitizeShop(process.env.shopifyurl as string) as string
+  shopify.utils.sanitizeShop(process.env.shopifyurl as string) as string,
 );
 session.accessToken = process.env.access_token;
 const client = new shopify.clients.Graphql({
@@ -137,10 +136,10 @@ const getAllProducts = async ({
             (priceRangeV2.minVariantPrice.amount -
               priceRangeV2.minVariantPrice.amount * 0.05 +
               Number.EPSILON) *
-              100
+              100,
           ) / 100,
       };
-    }
+    },
   );
   console.log(JSON.stringify(products));
   if (products.pageInfo.hasNextPage) {
@@ -255,7 +254,7 @@ export async function main() {
     price: number;
   }>(
     (
-      val
+      val,
     ): val is {
       handle: string;
       metafield: string;
@@ -279,7 +278,7 @@ export async function main() {
       }
       missMatcheddProducts.push(val);
       return false;
-    }
+    },
   );
   const formattedProducts: Array<BGGUpload> = matchedProducts.map(
     ({ metafield, price, handle, totalInventory }) => {
@@ -291,7 +290,7 @@ export async function main() {
         show_from: 1,
         url: affiliateUrlBuilder({ handle }),
       };
-    }
+    },
   );
   const writer = createObjectCsvWriter({
     path: path.join("/tmp", "out.csv"),
@@ -400,7 +399,7 @@ export async function main() {
 
 export default async function handler(
   request: VercelRequest,
-  response: VercelResponse
+  response: VercelResponse,
 ) {
   await main();
   return response.send("hello world");
