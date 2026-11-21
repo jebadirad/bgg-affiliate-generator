@@ -116,13 +116,8 @@ const getAllProducts = async ({
         handle,
         totalInventory,
         metafield: metafield ? metafield.value : null,
-        price:
-          Math.round(
-            (priceRangeV2.minVariantPrice.amount -
-              priceRangeV2.minVariantPrice.amount * 0.05 +
-              Number.EPSILON) *
-              100,
-          ) / 100,
+        price: rounded,
+        barcode: variants.edges[0]?.node.barcode || null,
       };
     },
   );
@@ -291,44 +286,53 @@ export async function main() {
   const rpgs = (await neatCsv(fs.createReadStream(PATH_TO_RPG), {
     headers: ["objectid", "name"],
   })) as Array<{ objectid: string; name: string }>;
-  const missMatcheddProducts: {
-    handle: string;
-    metafield: string | null;
-    price: number;
-  }[] = [];
-  const matchedProducts = products.filter<{
-    handle: string;
-    metafield: string;
-    totalInventory: number;
-    price: number;
-  }>(
-    (
-      val,
-    ): val is {
-      handle: string;
-      metafield: string;
-      price: number;
-      totalInventory: number;
-    } => {
-      if (val.metafield) {
-        const find = primaries.find((v) => {
-          return v.objectid === val.metafield;
-        });
-        if (find) {
-          return true;
-        } else {
-          const findRPG = rpgs.find((v) => {
-            return v.objectid === val.metafield;
-          });
-          if (findRPG) {
-            return true;
-          }
-        }
-      }
-      missMatcheddProducts.push(val);
-      return false;
-    },
+  const validIds = new Set<string>([
+    ...primaries.map((p) => p.objectid),
+    ...rpgs.map((r) => r.objectid),
+  ]);
+
+  // Coverage stats: which valid IDs have any barcode mapping across indexes
+  const allIndexIds = new Set<string>();
+  const collectIds = (idx: Map<string, Set<string>> | null) => {
+    if (!idx) return;
+    for (const set of idx.values()) {
+      for (const id of set) allIndexIds.add(id);
+    }
+  };
+  collectIds(upcIndex);
+  collectIds(gtinIndex);
+  collectIds(isbnIndex);
+  let mappedCount = 0;
+  for (const id of validIds) if (allIndexIds.has(id)) mappedCount++;
+  const missingMappingIds: { objectid: string; name: string }[] = [];
+  for (const p of primaries)
+    if (!allIndexIds.has(p.objectid)) missingMappingIds.push(p);
+  for (const r of rpgs)
+    if (!allIndexIds.has(r.objectid)) missingMappingIds.push(r);
+  console.log(
+    `[coverage] total valid IDs=${validIds.size} have barcode mapping=${mappedCount} missing=${validIds.size - mappedCount}`,
   );
+  // Write missing mapping CSV
+  const missingPath = path.join("/tmp", "missing_barcode_mapping.csv");
+  const missingWriter = createObjectCsvWriter({
+    path: missingPath,
+    header: [
+      { id: "objectid", title: "objectid" },
+      { id: "name", title: "name" },
+    ],
+  });
+  await missingWriter.writeRecords(missingMappingIds);
+  console.log(
+    `wrote missing mapping CSV with ${missingMappingIds.length} rows`,
+  );
+
+  const matchedProducts = products.filter(
+    (p) => p.metafield && validIds.has(p.metafield),
+  );
+  const failedProducts = products.filter(
+    (p) => !p.metafield || !validIds.has(p.metafield),
+  );
+
   const formattedProducts: Array<BGGUpload> = matchedProducts.map(
     ({ metafield, price, handle, totalInventory }) => {
       return {
