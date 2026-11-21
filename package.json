@@ -1,37 +1,186 @@
 {
-  "name": "bgg-affiliate-generator",
-  "version": "1.0.0",
-  "description": "",
-  "exports": "./index.js",
-  "type": "module",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "npx eslint .",
-    "build": "tsc"
+  "kind": "InsightVizNode",
+  "source": {
+    "kind": "FunnelsQuery",
+    "series": [
+      {
+        "kind": "EventsNode",
+        "name": "conv_landing_page_view",
+        "event": "conv_landing_page_view",
+        "properties": [
+          {
+            "key": "$current_url",
+            "type": "event",
+            "value": "https://landing.fh.co/medication-tirzepatide-discount-01/",
+            "operator": "icontains"
+          }
+        ]
+      },
+      {
+        "kind": "EventsNode",
+        "name": "conv_quiz_start",
+        "event": "conv_quiz_start"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "achieve_screen_loaded",
+        "event": "achieve_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "sex_screen_loaded",
+        "event": "sex_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "dob_screen_loaded",
+        "event": "dob_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "bmi_screen_loaded",
+        "event": "bmi_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "goal-weight_screen_loaded",
+        "event": "goal-weight_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "state_screen_loaded",
+        "event": "state_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "conditions_screen_loaded",
+        "event": "conditions_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "comorbidity_screen_loaded",
+        "event": "comorbidity_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "type-2-diabetes_screen_loaded",
+        "event": "type-2-diabetes_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "health-conditions_screen_loaded",
+        "event": "health-conditions_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "heart-disease_screen_loaded",
+        "event": "heart-disease_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "mental-well-being_screen_loaded",
+        "event": "mental-well-being_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "depression_screen_loaded",
+        "event": "depression_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "bariatric-gastric-surgery_screen_loaded",
+        "event": "bariatric-gastric-surgery_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "weight-change_screen_loaded",
+        "event": "weight-change_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "blood-pressure_screen_loaded",
+        "event": "blood-pressure_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "heart-rate_screen_loaded",
+        "event": "heart-rate_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "men2_screen_loaded",
+        "event": "men2_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "current-medications_screen_loaded",
+        "event": "current-medications_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "med-allergies_screen_loaded",
+        "event": "med-allergies_screen_loaded"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "survey_session_update_success",
+        "event": "survey_session_update_success"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "conv_lead_view",
+        "event": "conv_lead_view"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "conv_lead",
+        "event": "conv_lead"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "conv_results_viewed",
+        "event": "conv_results_viewed",
+        "optionalInFunnel": true
+      },
+      {
+        "kind": "EventsNode",
+        "name": "conv_add_to_cart",
+        "event": "conv_add_to_cart"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "conv_checkout",
+        "event": "conv_checkout"
+      },
+      {
+        "kind": "EventsNode",
+        "name": "conv_purchase",
+        "event": "conv_purchase"
+      }
+    ],
+    "interval": "hour",
+    "dateRange": {
+      "date_to": null,
+      "date_from": "dStart",
+      "explicitDate": false
+    },
+    "properties": {
+      "type": "AND",
+      "values": [
+        {
+          "type": "AND",
+          "values": []
+        }
+      ]
+    },
+    "funnelsFilter": {
+      "funnelVizType": "steps",
+      "funnelStepReference": "total",
+      "funnelWindowInterval": 7,
+      "funnelWindowIntervalUnit": "day"
+    },
+    "breakdownFilter": {},
+    "filterTestAccounts": true
   },
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@types/express": "^4.17.20",
-    "@types/node": "^20.8.7",
-    "@typescript-eslint/eslint-plugin": "^6.8.0",
-    "@typescript-eslint/parser": "^6.8.0",
-    "eslint": "^8.51.0",
-    "typescript": "^5.2.2"
-  },
-  "dependencies": {
-    "@netlify/functions": "^2.8.1",
-    "@shopify/shopify-api": "^11.4.0",
-    "@vercel/functions": "^1.4.1",
-    "@vercel/node": "^3.2.12",
-    "csv-parser": "^3.0.0",
-    "csv-writer": "^1.6.0",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "fast-fuzzy": "^1.12.0",
-    "form-data": "^4.0.0",
-    "neat-csv": "^7.0.0",
-    "node-fetch": "^3.3.2",
-    "node-fetch-cookies": "^2.1.1"
-  }
+  "full": true
 }
